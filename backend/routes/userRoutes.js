@@ -7,11 +7,7 @@ import {
   getUserProfile,
   updateUserProfile,
 } from "../controllers/userController.js";
-import {
-  logWaterIntake,
-  updateWaterIntake,
-  getUserWaterIntake,
-} from "../controllers/userWaterIntakeController.js";
+
 import { protect } from "../middleware/authMiddleware.js";
 
 router.post("/", registerUser);
@@ -23,11 +19,5 @@ router
   .get(protect, getUserProfile)
   .put(protect, updateUserProfile);
 
-router
-  .route("/water-intake")
-  .post(protect, logWaterIntake)
-  .put(protect, updateWaterIntake);
-
-router.route("/water-intake/:date").get(protect, getUserWaterIntake);
 
 export default router;
