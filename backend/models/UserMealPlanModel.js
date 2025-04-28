@@ -46,6 +46,12 @@ const userMealPlanSchema = new mongoose.Schema({
     maxlength: [500, "Snacks description cannot exceed 500 characters"],
     trim: true
   },
+  waterTarget: {
+    type: Number,
+    min: [0, "Water target must be positive"],
+    max: [20, "Water target seems too high"],
+    default: 0,
+  },
 });
 
 // Add index for efficient queries

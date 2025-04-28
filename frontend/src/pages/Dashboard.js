@@ -24,6 +24,8 @@ import {
   AccordionSummary,
   AccordionDetails,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { FaUtensils, FaWeight, FaPills, FaCalendarAlt, FaClock, FaCoffee, FaCarrot, FaAppleAlt, FaMoon, FaCookie } from 'react-icons/fa';
@@ -31,6 +33,13 @@ import { GiMuscleUp } from 'react-icons/gi';
 import { MdEdit, MdExpandMore, MdDelete } from 'react-icons/md';
 import { useGetAllMealPlansQuery, useGetAllMedicationsQuery, useDeleteMealPlanMutation, useDeleteMedicationMutation } from '../slices/usersApiSlice';
 import { toast } from 'react-toastify';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import StarIcon from '@mui/icons-material/Star';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import GoogleFitSync from '../components/GoogleFitSync';
 
 const Dashboard = () => {
   const [dietProfile, setDietProfile] = useState(null);
@@ -57,21 +66,111 @@ const Dashboard = () => {
   const medications = medicationsData?.data || [];
   const activeMedications = medications.filter(med => med.active);
 
+  // Progress Tracking Calculation
+  // Checkbox state: { dietProfile: bool, meals: {mealKey: bool}, medications: {medId: bool}, waterGoal: bool }
+  const [progressChecks, setProgressChecks] = useState(() => {
+    // Try to load from localStorage
+    const saved = localStorage.getItem('progressChecks');
+    if (saved) return JSON.parse(saved);
+    return { dietProfile: false, meals: {}, medications: {}, waterGoal: false };
+  });
+
+  // Save to localStorage on change
   useEffect(() => {
-    // Load diet profile from localStorage
+    localStorage.setItem('progressChecks', JSON.stringify(progressChecks));
+  }, [progressChecks]);
+
+  // Get latest meal plan (by date)
+  const latestMealPlan = mealPlans.length > 0 ? mealPlans.reduce((a, b) => new Date(a.date) > new Date(b.date) ? a : b) : null;
+  const mealKeys = latestMealPlan ? ['meal1', 'meal2', 'meal3', 'meal4', 'meal5', 'snacks'].filter(k => latestMealPlan[k]) : [];
+  const medicationIds = medications.map(med => med._id);
+  const hasWaterTarget = latestMealPlan && latestMealPlan.waterTarget && latestMealPlan.waterTarget > 0;
+
+  // Total items to check
+  const totalItems = 1 + mealKeys.length + medicationIds.length + (hasWaterTarget ? 1 : 0); // 1 for dietProfile, 1 for water if set
+  const checkedItems = (
+    (progressChecks.dietProfile ? 1 : 0) +
+    mealKeys.filter(k => progressChecks.meals && progressChecks.meals[k]).length +
+    medicationIds.filter(id => progressChecks.medications && progressChecks.medications[id]).length +
+    (hasWaterTarget && progressChecks.waterGoal ? 1 : 0)
+  );
+  const progressLevel = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+
+  // Handlers
+  const handleDietProfileCheck = (e) => {
+    setProgressChecks(prev => ({ ...prev, dietProfile: e.target.checked }));
+  };
+  const handleMealCheck = (mealKey) => (e) => {
+    setProgressChecks(prev => ({
+      ...prev,
+      meals: { ...prev.meals, [mealKey]: e.target.checked },
+    }));
+  };
+  const handleMedicationCheck = (medId) => (e) => {
+    setProgressChecks(prev => ({
+      ...prev,
+      medications: { ...prev.medications, [medId]: e.target.checked },
+    }));
+  };
+  const handleWaterGoalCheck = (e) => {
+    setProgressChecks(prev => ({ ...prev, waterGoal: e.target.checked }));
+  };
+
+  // Badge logic for every progress level
+  let badgeIcon = null;
+  let badgeColor = '';
+  let badgeLabel = '';
+
+  if (progressLevel === 0) {
+    badgeIcon = <HourglassEmptyIcon style={{ color: '#757575' }} />;
+    badgeColor = '#bdbdbd';
+    badgeLabel = 'Let\'s Start!';
+  } else if (progressLevel > 0 && progressLevel < 25) {
+    badgeIcon = <HourglassEmptyIcon style={{ color: '#f44336' }} />;
+    badgeColor = '#f44336';
+    badgeLabel = `Warming Up (${progressLevel}%)`;
+  } else if (progressLevel >= 25 && progressLevel < 50) {
+    badgeIcon = <TrendingUpIcon style={{ color: '#ff9800' }} />;
+    badgeColor = '#ff9800';
+    badgeLabel = `Keep Going! (${progressLevel}%)`;
+  } else if (progressLevel >= 50 && progressLevel < 75) {
+    badgeIcon = <StarIcon style={{ color: '#1976d2' }} />;
+    badgeColor = '#1976d2';
+    badgeLabel = `Halfway There! (${progressLevel}%)`;
+  } else if (progressLevel >= 75 && progressLevel < 100) {
+    badgeIcon = <RocketLaunchIcon style={{ color: '#8e24aa' }} />;
+    badgeColor = '#8e24aa';
+    badgeLabel = `Almost There! (${progressLevel}%)`;
+  } else if (progressLevel === 100) {
+    badgeIcon = <EmojiEventsIcon style={{ color: '#fff' }} />;
+    badgeColor = '#4caf50';
+    badgeLabel = 'Champion! 100% Complete';
+  }
+
+  // Add a refresh handler for the diet profile
+  const refreshDietProfile = () => {
     const profileData = localStorage.getItem('profileData');
     if (profileData) {
-      setDietProfile(JSON.parse(profileData));
+      try {
+        const parsedData = JSON.parse(profileData);
+        setDietProfile(parsedData);
+      } catch (error) {
+        console.error("Error refreshing profile data:", error);
+      }
     }
+  };
 
-    // Show errors if data fetch fails
-    if (mealPlansError) {
-      toast.error('Failed to load meal plans');
-    }
-    if (medicationsError) {
-      toast.error('Failed to load medications');
-    }
-  }, [mealPlansError, medicationsError]);
+  // Add event listener for storage changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'profileData') {
+        refreshDietProfile();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const handleAccordionChange = (panel) => (event, isExpanded) => {
     setExpandedAccordion(isExpanded ? panel : false);
@@ -143,6 +242,7 @@ const Dashboard = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      <GoogleFitSync />
       <Typography variant="h4" component="h1" sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
         <GiMuscleUp size={40} color="#4A90E2" />
         Your Health Dashboard
@@ -182,6 +282,11 @@ const Dashboard = () => {
                   <ListItem>
                     <ListItemText primary="Goal" secondary={dietProfile.goal} />
                   </ListItem>
+                  {hasWaterTarget && (
+                    <ListItem>
+                      <ListItemText primary="Water Goal" secondary={`${latestMealPlan.waterTarget && latestMealPlan.waterTarget > 0 ? latestMealPlan.waterTarget : 0} L`} />
+                    </ListItem>
+                  )}
                 </List>
               ) : (
                 <Typography color="text.secondary">No diet profile set up yet.</Typography>
@@ -212,6 +317,67 @@ const Dashboard = () => {
                 </Card>
               </Grid>
             </Grid>
+          </Paper>
+        </Grid>
+
+        {/* Progress Tracking */}
+        <Grid item xs={12}>
+          <Paper elevation={3} sx={{ height: '100%', p: 3, mt: 2 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Progress Tracking</Typography>
+            <Box sx={{ display: 'flex', gap: 3, mb: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <FormControlLabel
+                control={<Checkbox checked={progressChecks.dietProfile} onChange={handleDietProfileCheck} color="success" />}
+                label={<span style={{ fontWeight: 500 }}>Diet Profile Completed</span>}
+              />
+              {mealKeys.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Meals:</Typography>
+                  {mealKeys.map(mealKey => (
+                    <FormControlLabel
+                      key={mealKey}
+                      control={<Checkbox checked={progressChecks.meals && progressChecks.meals[mealKey]} onChange={handleMealCheck(mealKey)} color="primary" />}
+                      label={<span style={{ fontWeight: 400 }}>{getMealLabel(mealKey)} ({latestMealPlan[mealKey]})</span>}
+                    />
+                  ))}
+                </Box>
+              )}
+              {medicationIds.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Medications:</Typography>
+                  {medications.map(med => (
+                    <FormControlLabel
+                      key={med._id}
+                      control={<Checkbox checked={progressChecks.medications && progressChecks.medications[med._id]} onChange={handleMedicationCheck(med._id)} color="secondary" />}
+                      label={<span style={{ fontWeight: 400 }}>{med.name} ({med.dosage})</span>}
+                    />
+                  ))}
+                </Box>
+              )}
+              {hasWaterTarget && (
+                <FormControlLabel
+                  control={<Checkbox checked={progressChecks.waterGoal || false} onChange={handleWaterGoalCheck} color="info" />}
+                  label={<span style={{ fontWeight: 500 }}>Water Goal Met ({latestMealPlan.waterTarget} L)</span>}
+                />
+              )}
+            </Box>
+            <Box sx={{ width: '100%', mb: 1 }}>
+              <Box sx={{ height: 24, background: '#e0e0e0', borderRadius: 12, overflow: 'hidden' }}>
+                <Box sx={{ width: `${progressLevel}%`, height: '100%', background: progressLevel === 100 ? '#4caf50' : progressLevel >= 75 ? '#8e24aa' : progressLevel >= 50 ? '#1976d2' : progressLevel >= 25 ? '#ff9800' : progressLevel > 0 ? '#f44336' : '#bdbdbd', transition: 'width 0.5s' }} />
+              </Box>
+            </Box>
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+              <Chip
+                icon={badgeIcon}
+                label={badgeLabel}
+                sx={{ bgcolor: badgeColor, color: progressLevel === 100 ? '#fff' : '#fff', fontWeight: 'bold', fontSize: '1rem', px: 2, py: 1, boxShadow: 2 }}
+              />
+            </Box>
+            <Typography variant="body1" sx={{ mt: 1 }}>
+              {progressLevel === 0 && 'Start by completing your diet profile, following your meal plan, and taking your medications!'}
+              {progressLevel > 0 && progressLevel < 50 && 'Good start! Keep going to reach the next milestone.'}
+              {progressLevel >= 50 && progressLevel < 100 && 'Awesome! You are halfway there.'}
+              {progressLevel === 100 && 'Congratulations! You are a champion at following your health plan!'}
+            </Typography>
           </Paper>
         </Grid>
       </Grid>

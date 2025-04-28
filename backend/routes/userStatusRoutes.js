@@ -8,7 +8,7 @@ import {
 import { protect } from "../middleware/authMiddleware.js";
 
 router
-  .route("/status")
+  .route("/")
   .post(protect, createUserStatus)
   .get(protect, getUserStatus)
   .put(protect, updateUserStatus);

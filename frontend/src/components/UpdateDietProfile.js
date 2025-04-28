@@ -145,11 +145,18 @@ const UpdateDietProfile = () => {
           goal,
         };
 
-        await updateStatus(updatedProfile).unwrap();
-        toast.success("Diet Profile Updated!");
-        localStorage.setItem("profileData", JSON.stringify(updatedProfile));
+        const response = await updateStatus(updatedProfile).unwrap();
+        
+        // Update localStorage with the complete response data
+        localStorage.setItem("profileData", JSON.stringify(response));
+        
+        toast.success("Diet Profile Updated Successfully!");
+        
+        // Force a page reload to ensure dashboard gets the latest data
+        window.location.reload();
       } catch (err) {
-        toast.error(err?.data?.message || err.error);
+        console.error("Update error:", err);
+        toast.error(err?.data?.message || "Failed to update diet profile. Please try again.");
       }
     } else {
       toast.error("Please fill in all the required fields.");

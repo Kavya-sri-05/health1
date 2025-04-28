@@ -80,6 +80,7 @@ const MealPlan = () => {
   const [meal4, setMeal4] = useState("");
   const [meal5, setMeal5] = useState("");
   const [snacks, setSnacks] = useState("");
+  const [waterTarget, setWaterTarget] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [savedMealPlans, setSavedMealPlans] = useState([]);
 
@@ -106,6 +107,10 @@ const MealPlan = () => {
       toast.error("Please log in to save meal plans");
       return;
     }
+    if (!waterTarget || Number(waterTarget) <= 0) {
+      toast.error("Please enter your water intake goal for the day (in litres)");
+      return;
+    }
 
     try {
       const mealPlanData = {
@@ -116,6 +121,7 @@ const MealPlan = () => {
         meal4,
         meal5,
         snacks,
+        waterTarget: waterTarget ? Number(waterTarget) : 0,
       };
 
       console.log('Submitting meal plan:', mealPlanData);
@@ -164,6 +170,7 @@ const MealPlan = () => {
     setMeal4(plan.meal4 || "");
     setMeal5(plan.meal5 || "");
     setSnacks(plan.snacks || "");
+    setWaterTarget(plan.waterTarget !== undefined && plan.waterTarget !== null ? plan.waterTarget : "");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -223,6 +230,21 @@ const MealPlan = () => {
                 backgroundColor: 'white',
                 borderRadius: 1
               }}
+            />
+          </Box>
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" component="h2" gutterBottom sx={{ color: '#2C3E50' }}>
+              Water Intake Goal (litres)
+            </Typography>
+            <TextField
+              type="number"
+              value={waterTarget}
+              onChange={(e) => setWaterTarget(e.target.value)}
+              fullWidth
+              inputProps={{ min: 0, max: 20, step: 0.1 }}
+              placeholder="e.g. 2.5"
+              sx={{ backgroundColor: 'white', borderRadius: 1 }}
             />
           </Box>
 
@@ -331,6 +353,7 @@ const MealPlan = () => {
                   <TableCell>Date</TableCell>
                   <TableCell>Meals Overview</TableCell>
                   <TableCell>Total Meals</TableCell>
+                  <TableCell>Water Goal (L)</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -408,6 +431,7 @@ const MealPlan = () => {
                       </Box>
                     </TableCell>
                     <TableCell>{getMealCount(plan)} meals</TableCell>
+                    <TableCell>{plan.waterTarget && plan.waterTarget > 0 ? plan.waterTarget : 0} L</TableCell>
                     <TableCell align="right">
                       <IconButton
                         color="primary"

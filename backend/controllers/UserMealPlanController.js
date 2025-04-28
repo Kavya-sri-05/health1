@@ -8,7 +8,7 @@ import asyncHandler from "express-async-handler";
  * @returns {Promise<void>}
  */
 export const createUserMealPlan = asyncHandler(async (req, res) => {
-  const { date, meal1, meal2, meal3, meal4, meal5, snacks } = req.body;
+  const { date, meal1, meal2, meal3, meal4, meal5, snacks, waterTarget } = req.body;
   const userId = req.user._id;
 
   const mealPlan = await MealPlan.create({
@@ -19,7 +19,8 @@ export const createUserMealPlan = asyncHandler(async (req, res) => {
     meal3,
     meal4,
     meal5,
-    snacks
+    snacks,
+    waterTarget
   });
 
   res.status(201).json({
@@ -61,7 +62,7 @@ export const getUserMealPlan = asyncHandler(async (req, res) => {
  * @returns {Promise<void>}
  */
 export const updateUserMealPlan = asyncHandler(async (req, res) => {
-  const { date, meal1, meal2, meal3, meal4, meal5, snacks } = req.body;
+  const { date, meal1, meal2, meal3, meal4, meal5, snacks, waterTarget } = req.body;
   const userId = req.user._id;
 
   const mealPlan = await MealPlan.findOneAndUpdate(
@@ -75,7 +76,8 @@ export const updateUserMealPlan = asyncHandler(async (req, res) => {
       meal3,
       meal4,
       meal5,
-      snacks
+      snacks,
+      waterTarget
     },
     {
       new: true,
