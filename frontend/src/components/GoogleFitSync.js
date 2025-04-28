@@ -1,70 +1,91 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import { Paper, Box, Typography, Button } from '@mui/material';
 
 const CLIENT_ID = '474809683933-ifrjdvapeptcclne3cdibvh6vudmoo8r.apps.googleusercontent.com';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/fitness/v1/rest';
-const SCOPES = 'https://www.googleapis.com/auth/fitness.activity.read https://www.googleapis.com/auth/fitness.heart_rate.read';
+const SCOPES = [
+  'https://www.googleapis.com/auth/fitness.activity.read'
+].join(' ');
 
 const GoogleFitSync = () => {
-  const [gapiLoaded, setGapiLoaded] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [steps, setSteps] = useState(null);
-  const [heartRate, setHeartRate] = useState(null);
+  const [heartPoints, setHeartPoints] = useState(null);
+  const [targetSteps, setTargetSteps] = useState(null);
+  const [targetHeartPoints, setTargetHeartPoints] = useState(null);
   const [status, setStatus] = useState('');
+  const tokenClient = useRef(null);
 
-  // Load gapi script
+  // Load GIS and gapi scripts
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = () => setGapiLoaded(true);
-    document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
+    // Load Google Identity Services
+    const gisScript = document.createElement('script');
+    gisScript.src = 'https://accounts.google.com/gsi/client';
+    gisScript.async = true;
+    document.body.appendChild(gisScript);
+
+    // Load gapi
+    const gapiScript = document.createElement('script');
+    gapiScript.src = 'https://apis.google.com/js/api.js';
+    gapiScript.async = true;
+    gapiScript.onload = () => {
+      window.gapi.load('client', async () => {
+        await window.gapi.client.init({
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+      });
+    };
+    document.body.appendChild(gapiScript);
+
+    return () => {
+      document.body.removeChild(gisScript);
+      document.body.removeChild(gapiScript);
+    };
   }, []);
 
-  // Initialize gapi client
+  // Initialize GIS token client
   useEffect(() => {
-    if (!gapiLoaded) return;
-    window.gapi.load('client:auth2', async () => {
-      try {
-        await window.gapi.client.init({
-          clientId: CLIENT_ID,
-          discoveryDocs: [DISCOVERY_DOC],
-          scope: SCOPES,
-        });
-        setIsSignedIn(window.gapi.auth2.getAuthInstance().isSignedIn.get());
-        window.gapi.auth2.getAuthInstance().isSignedIn.listen(setIsSignedIn);
-      } catch (err) {
-        setStatus('Google API init error: ' + getErrorMessage(err));
-        console.error('Google API init error:', err);
-      }
+    if (!window.google || !window.google.accounts) return;
+    tokenClient.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (tokenResponse) => {
+        if (tokenResponse && tokenResponse.access_token) {
+          setIsSignedIn(true);
+          setStatus('Signed in! Fetching data...');
+          fetchSteps();
+          fetchHeartPoints();
+          fetchGoals();
+        } else {
+          setStatus('Failed to get access token.');
+        }
+      },
     });
-  }, [gapiLoaded]);
-
-  // Fetch data after sign-in
-  useEffect(() => {
-    if (!isSignedIn) return;
-    fetchSteps();
-    fetchHeartRate();
-    // eslint-disable-next-line
-  }, [isSignedIn]);
+  }, [window.google && window.google.accounts]);
 
   const signIn = () => {
-    window.gapi.auth2.getAuthInstance().signIn();
+    if (tokenClient.current) {
+      tokenClient.current.requestAccessToken({ prompt: 'consent' });
+    } else {
+      setStatus('Google Identity Services not loaded yet.');
+    }
   };
+
   const signOut = () => {
-    window.gapi.auth2.getAuthInstance().signOut();
+    setIsSignedIn(false);
     setSteps(null);
-    setHeartRate(null);
+    setHeartPoints(null);
+    setTargetSteps(null);
+    setTargetHeartPoints(null);
     setStatus('');
   };
 
-  function getErrorMessage(err) {
-    if (!err) return 'Unknown error';
-    if (typeof err === 'string') return err;
-    if (err.result && err.result.error && err.result.error.message) return err.result.error.message;
-    if (err.error && err.error.message) return err.error.message;
-    if (err.message) return err.message;
-    return JSON.stringify(err);
-  }
+  const showLoadedStatus = () => {
+    setStatus('Data loaded!');
+    setTimeout(() => setStatus(''), 2000);
+  };
 
   const fetchSteps = async () => {
     setStatus('Fetching steps...');
@@ -77,8 +98,7 @@ const GoogleFitSync = () => {
         userId: 'me',
         resource: {
           aggregateBy: [{
-            dataTypeName: 'com.google.step_count.delta',
-            dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
+            dataTypeName: 'com.google.step_count.delta'
           }],
           bucketByTime: { durationMillis: 86400000 },
           startTimeMillis: startTime,
@@ -103,15 +123,15 @@ const GoogleFitSync = () => {
         });
       }
       setSteps(totalSteps);
-      setStatus('');
+      showLoadedStatus();
     } catch (err) {
-      setStatus('Failed to fetch steps: ' + getErrorMessage(err));
+      setStatus('Failed to fetch steps: ' + (err.message || JSON.stringify(err)));
       console.error('Google Fit steps error:', err);
     }
   };
 
-  const fetchHeartRate = async () => {
-    setStatus('Fetching heart rate...');
+  const fetchHeartPoints = async () => {
+    setStatus('Fetching heart points...');
     const now = Date.now();
     const start = new Date();
     start.setHours(0,0,0,0);
@@ -121,8 +141,7 @@ const GoogleFitSync = () => {
         userId: 'me',
         resource: {
           aggregateBy: [{
-            dataTypeName: 'com.google.heart_rate.bpm',
-            dataSourceId: 'derived:com.google.heart_rate.bpm:com.google.android.gms:merge_heart_rate_bpm'
+            dataTypeName: 'com.google.heart_minutes'
           }],
           bucketByTime: { durationMillis: 86400000 },
           startTimeMillis: startTime,
@@ -130,8 +149,7 @@ const GoogleFitSync = () => {
         }
       });
       const buckets = response.result.bucket;
-      let avgHeartRate = null;
-      let total = 0, count = 0;
+      let totalHeartPoints = 0;
       if (buckets && buckets.length > 0) {
         buckets.forEach(bucket => {
           if (bucket.dataset && bucket.dataset.length > 0) {
@@ -139,8 +157,7 @@ const GoogleFitSync = () => {
               if (ds.point && ds.point.length > 0) {
                 ds.point.forEach(point => {
                   if (point.value && point.value.length > 0) {
-                    total += point.value[0].fpVal || 0;
-                    count++;
+                    totalHeartPoints += point.value[0].fpVal || 0;
                   }
                 });
               }
@@ -148,68 +165,101 @@ const GoogleFitSync = () => {
           }
         });
       }
-      if (count > 0) avgHeartRate = Math.round(total / count);
-      setHeartRate(avgHeartRate);
-      setStatus('');
+      setHeartPoints(Math.round(totalHeartPoints));
+      showLoadedStatus();
     } catch (err) {
-      setStatus('Failed to fetch heart rate: ' + getErrorMessage(err));
-      console.error('Google Fit heart rate error:', err);
+      setStatus('Failed to fetch heart points: ' + (err.message || JSON.stringify(err)));
+      console.error('Google Fit heart points error:', err);
+    }
+  };
+
+  // Fetch Google Fit goals (if set)
+  const fetchGoals = async () => {
+    try {
+      const response = await window.gapi.client.fitness.users.goals.list({
+        userId: 'me'
+      });
+      if (response.result && response.result.items) {
+        let foundStepGoal = false;
+        let foundHeartGoal = false;
+        response.result.items.forEach(goal => {
+          if (goal.metric === 'com.google.step_count.delta' && goal.value && goal.value.intVal) {
+            setTargetSteps(goal.value.intVal);
+            foundStepGoal = true;
+          }
+          if (goal.metric === 'com.google.heart_minutes' && goal.value && goal.value.intVal) {
+            setTargetHeartPoints(goal.value.intVal);
+            foundHeartGoal = true;
+          }
+        });
+        if (!foundStepGoal) setTargetSteps(null);
+        if (!foundHeartGoal) setTargetHeartPoints(null);
+      } else {
+        setTargetSteps(null);
+        setTargetHeartPoints(null);
+      }
+    } catch (err) {
+      setTargetSteps(null);
+      setTargetHeartPoints(null);
+      console.warn('Could not fetch Google Fit goals:', err);
     }
   };
 
   return (
-    <div style={{
-      background: '#f7f9fc',
-      borderRadius: 12,
-      padding: 24,
-      margin: '24px 0',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.07)'
-    }}>
-      <h3 style={{marginBottom: 16}}>Google Fit Sync</h3>
+    <Paper elevation={3} sx={{ p: 4, borderRadius: 2, mb: 4, background: '#f7f9fc' }}>
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h5" color="primary" fontWeight={700}>
+          Google Fit Sync
+        </Typography>
+      </Box>
       {!isSignedIn ? (
-        <button
+        <Button
           onClick={signIn}
-          style={{
-            background: '#4285F4',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            padding: '10px 24px',
-            fontSize: 16,
-            cursor: 'pointer',
-            marginBottom: 16
-          }}
+          variant="contained"
+          color="primary"
+          sx={{ mb: 2, fontWeight: 600, fontSize: 16 }}
         >
           Sign in with Google
-        </button>
+        </Button>
       ) : (
-        <button
+        <Button
           onClick={signOut}
-          style={{
-            background: '#aaa',
-            color: 'white',
-            border: 'none',
-            borderRadius: 6,
-            padding: '10px 24px',
-            fontSize: 16,
-            cursor: 'pointer',
-            marginBottom: 16
-          }}
+          variant="outlined"
+          color="secondary"
+          sx={{ mb: 2, fontWeight: 600, fontSize: 16 }}
         >
           Sign out
-        </button>
+        </Button>
       )}
-      <div style={{marginBottom: 8}}><strong>Status:</strong> {status}</div>
+      <Typography sx={{ mb: 2, color: '#888' }}><strong>Status:</strong> {status}</Typography>
       {isSignedIn && (
-        <>
-          <div style={{marginBottom: 8}}><strong>Today's Steps:</strong> {steps !== null ? steps : 'Loading...'}</div>
-          <div style={{marginBottom: 8}}><strong>Average Heart Rate:</strong> {heartRate !== null ? heartRate + ' bpm' : 'Loading...'}</div>
-        </>
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <DirectionsWalkIcon color="primary" />
+            <Typography>
+              <strong>Today's Steps:</strong> {steps !== null ? steps : 'Loading...'}
+              {targetSteps !== null
+                ? <span style={{ color: steps >= targetSteps ? '#4caf50' : '#f44336', fontWeight: 600 }}> / Target: {targetSteps}</span>
+                : <span style={{ color: '#888', fontStyle: 'italic' }}> (No target set in Google Fit)</span>
+              }
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <FavoriteIcon color="error" />
+            <Typography>
+              <strong>Today's Heart Points:</strong> {heartPoints !== null ? heartPoints : 'Loading...'}
+              {targetHeartPoints !== null
+                ? <span style={{ color: heartPoints >= targetHeartPoints ? '#4caf50' : '#f44336', fontWeight: 600 }}> / Target: {targetHeartPoints}</span>
+                : <span style={{ color: '#888', fontStyle: 'italic' }}> (No target set in Google Fit)</span>
+              }
+            </Typography>
+          </Box>
+        </Box>
       )}
-      <div style={{fontSize: 13, color: '#888', marginTop: 12}}>
+      <Typography variant="caption" sx={{ color: '#888', mt: 2, display: 'block' }}>
         <em>Requires Google Fit data and user permission. Data is for today only.</em>
-      </div>
-    </div>
+      </Typography>
+    </Paper>
   );
 };
 

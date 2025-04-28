@@ -172,6 +172,19 @@ const Dashboard = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  useEffect(() => {
+    // Load diet profile from localStorage on mount
+    const profileData = localStorage.getItem('profileData');
+    if (profileData) {
+      try {
+        setDietProfile(JSON.parse(profileData));
+      } catch (error) {
+        console.error("Error parsing profile data:", error);
+        setDietProfile(null);
+      }
+    }
+  }, []);
+
   const handleAccordionChange = (panel) => (event, isExpanded) => {
     setExpandedAccordion(isExpanded ? panel : false);
   };
